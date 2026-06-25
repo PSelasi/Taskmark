@@ -1,10 +1,18 @@
 {
   "name": "taskmark",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Lightweight offline productivity app with robust reminders.",
+  "main": "main.js",
+  "build": {
+    "appId": "com.taskmark.app",
+    "win": {
+      "target": "nsis",
+      "icon": "src/assets/icon.ico"
+    }
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "xvfb-run -s '-screen 0 1024x768x24' electron . & x11vnc -forever -shared -nopw -display :99",
+    "postinstall": "electron-rebuild -f -w sqlite3"
   },
   "repository": {
     "type": "git",
@@ -17,5 +25,14 @@
   "bugs": {
     "url": "https://github.com/PSelasi/Taskmark/issues"
   },
-  "homepage": "https://github.com/PSelasi/Taskmark#readme"
+  "homepage": "https://github.com/PSelasi/Taskmark#readme",
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
+    "electron": "^42.5.0",
+    "png-to-ico": "^3.0.1",
+    "sharp": "^0.35.2"
+  },
+  "dependencies": {
+    "sqlite3": "^6.0.1"
+  }
 }

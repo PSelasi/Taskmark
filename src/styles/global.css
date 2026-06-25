@@ -1,0 +1,73 @@
+:root {
+  --bg-primary: #ffffff;
+  --bg-sidebar: #f8fafc;
+  --text-main: #0f172a;
+  --border-color: #e2e8f0;
+  --accent-color: #2563eb;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #0f172a;
+  --bg-sidebar: #1e293b;
+  --text-main: #f8fafc;
+  --border-color: #334155;
+  --accent-color: #3b82f6;
+}
+
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+#sidebar {
+  width: 240px;
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.nav-btn {
+  padding: 10px 15px;
+  background: none;
+  border: none;
+  color: var(--text-main);
+  text-align: left;
+  cursor: pointer;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.nav-btn:hover, .nav-btn.active {
+  background-color: var(--accent-color);
+  color: white;
+}
+
+#main-content {
+  flex: 1;
+  padding: 30px;
+  overflow-y: auto;
+}
+
+.task-card {
+  background: var(--bg-sidebar);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 15px;
+  margin-bottom: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.priority-Critical { border-left: 5px solid #ef4444; }
+.priority-High { border-left: 5px solid #f97316; }
+.priority-Medium { border-left: 5px solid #eab308; }
+.priority-Low { border-left: 5px solid #10b981; }

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <title>Taskmark</title>
+  <link rel="stylesheet" href="../styles/global.css">
+</head>
+<body>
+
+  <div id="sidebar">
+    <h2>Taskmark</h2>
+    <hr style="border: 0; border-top: 1px solid var(--border-color); width:100%;">
+    <button class="nav-btn active" onclick="switchTab('dashboard')">Dashboard</button>
+    <button class="nav-btn" onclick="switchTab('tasks')">Tasks</button>
+    <button class="nav-btn" onclick="switchTab('calendar')">Calendar</button>
+    <button style="margin-top: auto;" class="nav-btn" onclick="toggleTheme()">Toggle Theme</button>
+  </div>
+
+  <div id="main-content">
+    <div id="dashboard-view" class="view-section">
+      <h1>Dashboard</h1>
+      <div id="quick-stats" style="display:grid; grid-template-columns: repeat(3, 1fr); gap:20px; margin-bottom:30px;">
+        <div style="background:var(--bg-sidebar); padding:20px; border-radius:8px;">
+          <h3>Due Today</h3><p id="stat-today" style="font-size:24px; font-weight:bold;">0</p>
+        </div>
+        <div style="background:var(--bg-sidebar); padding:20px; border-radius:8px;">
+          <h3>Overdue</h3><p id="stat-overdue" style="font-size:24px; font-weight:bold; color:#ef4444;">0</p>
+        </div>
+        <div style="background:var(--bg-sidebar); padding:20px; border-radius:8px;">
+          <h3>Completed</h3><p id="stat-done" style="font-size:24px; font-weight:bold; color:#10b981;">0</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="tasks-view" class="view-section" style="display: none;">
+      <h1>Manage Tasks</h1>
+      <div style="background: var(--bg-sidebar); padding: 20px; border-radius: 8px; margin-bottom:20px;">
+        <input type="text" id="task-title" placeholder="What needs to be done?" style="width: 100%; padding: 10px; margin-bottom: 10px;">
+        <select id="task-priority">
+          <option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option>
+        </select>
+        <input type="date" id="task-date">
+        <input type="time" id="task-time">
+        <button onclick="addNewTask()" style="padding:10px 20px; background:var(--accent-color); color:white; border:none; border-radius:4px; cursor:pointer;">Add Task</button>
+      </div>
+      <div id="task-container"></div>
+    </div>
+
+    <div id="calendar-view" class="view-section" style="display: none;">
+      <h1>Calendar</h1>
+      <p>Calendar visualization schedules go here.</p>
+    </div>
+  </div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
