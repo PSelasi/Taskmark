@@ -1,6 +1,6 @@
 const React = require('react');
 const ReactDOM = require('react-dom/client');
-const { db } = require('../database/db.js');
+const { db, initDatabase } = require('../database/db.js');
 
 const { useState, useEffect } = React;
 
@@ -16,12 +16,14 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    if (activeTab === 'tasks') {
-      loadTasks();
-    }
-    if (activeTab === 'dashboard') {
-      loadDashboardStats();
-    }
+    initDatabase().then(() => {
+      if (activeTab === 'tasks') {
+        loadTasks();
+      }
+      if (activeTab === 'dashboard') {
+        loadDashboardStats();
+      }
+    }).catch(err => console.error('Database initialization failed:', err));
   }, [activeTab]);
 
   function updateForm(field, value) {
