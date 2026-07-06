@@ -18,7 +18,7 @@ function App() {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({ search: '', status: 'all', priority: 'all', due: 'all' });
-  const [form, setForm] = useState({ title: '', note: '', priority: 'Medium', date: '', time: '', category: '' });
+  const [form, setForm] = useState({ title: '', note: '', priority: 'Medium', date: '', time: '', category: '', recurrence: '' });
   const [categoryForm, setCategoryForm] = useState({ name: '', color: '#2563eb' });
   const [editingId, setEditingId] = useState(null);
   const [editTitle, setEditTitle] = useState('');
@@ -81,11 +81,11 @@ function App() {
     if (!form.title.trim()) return alert('Task description cannot be blank.');
 
     const categoryId = form.category || categories[0]?.id || null;
-    const stmt = db.prepare('INSERT INTO tasks (title, notes, priority, due_date, due_time, category_id, is_completed) VALUES (?, ?, ?, ?, ?, ?, 0)');
-    stmt.run(form.title.trim(), form.note.trim(), form.priority, form.date, form.time, categoryId, err => {
+    const stmt = db.prepare('INSERT INTO tasks (title, notes, priority, due_date, due_time, category_id, is_completed, recurrence, recurrence_start, next_occurrence) VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)');
+    stmt.run(form.title.trim(), form.note.trim(), form.priority, form.date, form.time, categoryId, form.recurrence || '', form.recurrence ? `${form.date || today}T${form.time || '09:00'}` : null, null, err => {
       if (err) return console.error(err);
       loadTasks();
-      setForm({ title: '', note: '', priority: 'Medium', date: '', time: '', category: categoryId || '' });
+      setForm({ title: '', note: '', priority: 'Medium', date: '', time: '', category: categoryId || '', recurrence: '' });
       setActiveView('tasks');
     });
     stmt.finalize();
@@ -300,6 +300,12 @@ function TasksView({ tasks, categories, form, updateForm, addTask, toggleTask, r
           type: 'time',
           value: form.time,
           onChange: event => updateForm('time', event.target.value)
+        }),
+        React.createElement('input', {
+          className: 'input',
+          placeholder: 'RRULE (optional), e.g. FREQ=DAILY;INTERVAL=1',
+          value: form.recurrence,
+          onChange: event => updateForm('recurrence', event.target.value)
         }),
         React.createElement('button', { className: 'btn primary', type: 'submit' }, 'Add Task')
       )
