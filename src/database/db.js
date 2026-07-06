@@ -1,10 +1,25 @@
 //SQLite connection & schema
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const { app } = require('electron');
+
+let app = null;
+try {
+  const electron = require('electron');
+  app = electron.app || electron.remote?.app || null;
+} catch (error) {
+  app = null;
+}
+
+function resolveDatabasePath(electronApp = app) {
+  if (electronApp && typeof electronApp.getPath === 'function') {
+    return path.join(electronApp.getPath('userData'), 'task_reminder_pro.db');
+  }
+
+  return path.join(process.cwd(), 'task_reminder_pro.db');
+}
 
 // Store DB in user data directory so it persists across app updates
-const dbPath = path.join(app.getPath('userData'), 'task_reminder_pro.db');
+const dbPath = resolveDatabasePath();
 const db = new sqlite3.Database(dbPath);
 
 function initDatabase() {
@@ -39,4 +54,4 @@ function initDatabase() {
   });
 }
 
-module.exports = { db, initDatabase };
+module.exports = { db, initDatabase, resolveDatabasePath };
