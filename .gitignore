@@ -1,1 +1,9 @@
 node_modules/
+
+# Local app data
+*.db
+*.sqlite
+*.sqlite3
+
+dist/
+.DS_Store
