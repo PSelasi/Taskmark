@@ -28,3 +28,11 @@ test('computes the next recurrence occurrence from an RRULE string', () => {
   assert.equal(next.getMonth(), 6);
   assert.equal(next.getDate(), 7);
 });
+
+test('exposes the live database connection after initialization', async () => {
+  const dbModule = require('../src/database/db.js');
+  await dbModule.initDatabase();
+
+  assert.ok(dbModule.db, 'expected a database handle after initialization');
+  assert.equal(typeof dbModule.db.all, 'function');
+});

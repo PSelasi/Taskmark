@@ -112,4 +112,10 @@ function initDatabase() {
   return initPromise;
 }
 
-module.exports = { db, initDatabase, resolveDatabasePath };
+module.exports = {
+  get db() {
+    return db;
+  },
+  initDatabase,
+  resolveDatabasePath
+};
