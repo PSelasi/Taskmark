@@ -2,29 +2,71 @@ const React = require('react');
 const ReactDOM = require('react-dom/client');
 const { db, initDatabase } = require('../database/db.js');
 
-const { useState, useEffect } = React;
+const { useEffect, useState } = React;
+
+const navItems = [
+  { id: 'dashboard', label: 'Dashboard' },
+  { id: 'tasks', label: 'Tasks' },
+  { id: 'calendar', label: 'Calendar' },
+  { id: 'categories', label: 'Categories' }
+];
 
 function App() {
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeView, setActiveView] = useState('dashboard');
   const [theme, setTheme] = useState(document.documentElement.getAttribute('data-theme') || 'dark');
   const [tasks, setTasks] = useState([]);
-  const [stats, setStats] = useState({ today: 0, overdue: 0, done: 0 });
-  const [form, setForm] = useState({ title: '', priority: 'Medium', date: '', time: '' });
+  const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({ search: '', status: 'all', priority: 'all', due: 'all' });
+  const [form, setForm] = useState({ title: '', note: '', priority: 'Medium', date: '', time: '', category: '' });
+  const [categoryForm, setCategoryForm] = useState({ name: '', color: '#2563eb' });
+  const [editingId, setEditingId] = useState(null);
+  const [editTitle, setEditTitle] = useState('');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
 
   useEffect(() => {
-    initDatabase().then(() => {
-      if (activeTab === 'tasks') {
+    initDatabase()
+      .then(() => {
+        loadCategories();
         loadTasks();
+        setLoading(false);
+      })
+      .catch(err => {
+        console.error('Database init failed:', err);
+        setLoading(false);
+      });
+  }, []);
+
+  function loadCategories() {
+    db.all('SELECT id, name, color FROM categories ORDER BY id', [], (err, rows) => {
+      if (err) return console.error(err);
+      const nextCategories = rows || [];
+      setCategories(nextCategories);
+      if (!form.category && nextCategories.length) {
+        setForm(prev => ({ ...prev, category: nextCategories[0].id }));
       }
-      if (activeTab === 'dashboard') {
-        loadDashboardStats();
+    });
+  }
+
+  function loadTasks() {
+    db.all(
+      'SELECT id, title, notes AS note, priority, due_date AS dueDate, due_time AS dueTime, category_id AS category, is_completed AS isCompleted, created_at AS createdAt FROM tasks ORDER BY is_completed ASC, due_date ASC, due_time ASC',
+      [],
+      (err, rows) => {
+        if (err) return console.error(err);
+        const mappedRows = (rows || []).map(row => ({
+          ...row,
+          isCompleted: Boolean(row.isCompleted),
+          dueDate: row.dueDate || '',
+          dueTime: row.dueTime || ''
+        }));
+        setTasks(mappedRows);
       }
-    }).catch(err => console.error('Database initialization failed:', err));
-  }, [activeTab]);
+    );
+  }
 
   function updateForm(field, value) {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -34,153 +76,336 @@ function App() {
     setTheme(current => (current === 'dark' ? 'light' : 'dark'));
   }
 
-  function addNewTask() {
+  function addTask(event) {
+    event.preventDefault();
     if (!form.title.trim()) return alert('Task description cannot be blank.');
 
-    const stmt = db.prepare('INSERT INTO tasks (title, priority, due_date, due_time) VALUES (?, ?, ?, ?)');
-    stmt.run(form.title.trim(), form.priority, form.date, form.time, function(err) {
-      if (err) {
-        console.error(err);
-        return;
-      }
+    const categoryId = form.category || categories[0]?.id || null;
+    const stmt = db.prepare('INSERT INTO tasks (title, notes, priority, due_date, due_time, category_id, is_completed) VALUES (?, ?, ?, ?, ?, ?, 0)');
+    stmt.run(form.title.trim(), form.note.trim(), form.priority, form.date, form.time, categoryId, err => {
+      if (err) return console.error(err);
       loadTasks();
-      setForm({ title: '', priority: 'Medium', date: '', time: '' });
-      setActiveTab('tasks');
+      setForm({ title: '', note: '', priority: 'Medium', date: '', time: '', category: categoryId || '' });
+      setActiveView('tasks');
     });
     stmt.finalize();
   }
 
-  function loadTasks() {
-    db.all('SELECT * FROM tasks WHERE is_completed = 0 ORDER BY due_date ASC', [], (err, rows) => {
-      if (err) {
-        console.error(err);
-        return;
-      }
-      setTasks(rows);
-    });
-  }
-
-  function completeTask(id) {
-    db.run('UPDATE tasks SET is_completed = 1 WHERE id = ?', [id], err => {
+  function toggleTask(id) {
+    db.run('UPDATE tasks SET is_completed = CASE WHEN is_completed = 0 THEN 1 ELSE 0 END WHERE id = ?', [id], err => {
       if (err) return console.error(err);
       loadTasks();
-      if (activeTab === 'dashboard') loadDashboardStats();
     });
   }
 
-  function loadDashboardStats() {
-    const todayStr = new Date().toISOString().split('T')[0];
-    const nextStats = { today: 0, overdue: 0, done: 0 };
-
-    db.get('SELECT count(*) as count FROM tasks WHERE due_date = ? AND is_completed = 0', [todayStr], (err, row) => {
-      if (!err && row) setStats(prev => ({ ...prev, today: row.count }));
-    });
-    db.get('SELECT count(*) as count FROM tasks WHERE due_date < ? AND is_completed = 0', [todayStr], (err, row) => {
-      if (!err && row) setStats(prev => ({ ...prev, overdue: row.count }));
-    });
-    db.get('SELECT count(*) as count FROM tasks WHERE is_completed = 1', [], (err, row) => {
-      if (!err && row) setStats(prev => ({ ...prev, done: row.count }));
+  function removeTask(id) {
+    if (!confirm('Remove this task?')) return;
+    db.run('DELETE FROM tasks WHERE id = ?', [id], err => {
+      if (err) return console.error(err);
+      loadTasks();
     });
   }
 
-  const navButton = (label, tab) =>
-    React.createElement(
-      'button',
-      {
-        className: `nav-btn ${activeTab === tab ? 'active' : ''}`,
-        onClick: () => setActiveTab(tab)
-      },
-      label
-    );
+  function saveEdit(id) {
+    db.run('UPDATE tasks SET title = ? WHERE id = ?', [editTitle, id], err => {
+      if (err) return console.error(err);
+      setEditingId(null);
+      loadTasks();
+    });
+  }
 
-  const taskRows = tasks.map(task =>
-    React.createElement(
-      'div',
-      { key: task.id, className: `task-card priority-${task.priority}` },
+  function addCategory(event) {
+    event.preventDefault();
+    if (!categoryForm.name.trim()) return;
+    const stmt = db.prepare('INSERT INTO categories (name, color) VALUES (?, ?)');
+    stmt.run(categoryForm.name.trim(), categoryForm.color, err => {
+      if (err) return console.error(err);
+      setCategoryForm({ name: '', color: '#2563eb' });
+      loadCategories();
+    });
+    stmt.finalize();
+  }
+
+  const today = new Date().toISOString().split('T')[0];
+  const pendingTasks = tasks.filter(task => !task.isCompleted);
+  const completedTasks = tasks.filter(task => task.isCompleted);
+  const dueToday = pendingTasks.filter(task => task.dueDate === today);
+  const overdue = pendingTasks.filter(task => task.dueDate && task.dueDate < today);
+  const filteredTasks = pendingTasks.filter(task => {
+    const haystack = `${task.title} ${task.note}`.toLowerCase();
+    if (filters.search && !haystack.includes(filters.search.toLowerCase())) return false;
+    if (filters.status !== 'all' && (filters.status === 'completed' ? !task.isCompleted : task.isCompleted)) return false;
+    if (filters.priority !== 'all' && task.priority !== filters.priority) return false;
+    if (filters.due === 'today' && task.dueDate !== today) return false;
+    if (filters.due === 'overdue' && !(task.dueDate && task.dueDate < today)) return false;
+    if (filters.due === 'upcoming' && !(task.dueDate && task.dueDate > today)) return false;
+    return true;
+  });
+
+  const calendarMap = {};
+  tasks.forEach(task => {
+    if (!task.dueDate) return;
+    if (!calendarMap[task.dueDate]) calendarMap[task.dueDate] = [];
+    calendarMap[task.dueDate].push(task);
+  });
+
+  const sidebar = React.createElement('aside', { className: 'sidebar' },
+    React.createElement('div', { className: 'sidebar-brand' },
+      React.createElement('div', { className: 'brand-badge' }, '✓'),
       React.createElement('div', null,
-        React.createElement('strong', null, task.title),
-        React.createElement('div', { style: { fontSize: '12px', color: 'gray' } },
-          `Due: ${task.due_date || 'No Date'} ${task.due_time || ''}`
-        )
-      ),
-      React.createElement(
-        'button',
-        { onClick: () => completeTask(task.id), style: { padding: '5px 10px', cursor: 'pointer' } },
-        '✓ Complete'
+        React.createElement('div', { className: 'brand-title' }, 'TaskMark'),
+        React.createElement('div', { className: 'brand-subtitle' }, 'Offline productivity')
       )
+    ),
+    React.createElement('nav', { className: 'nav-list' }, navItems.map(item =>
+      React.createElement('button', {
+        key: item.id,
+        className: `nav-btn ${activeView === item.id ? 'active' : ''}`,
+        onClick: () => setActiveView(item.id)
+      }, item.label)
+    )),
+    React.createElement('button', { className: 'theme-toggle', onClick: toggleTheme }, theme === 'dark' ? '☀ Light mode' : '☾ Dark mode')
+  );
+
+  const content = React.createElement('main', { className: 'main-panel' },
+    loading ? React.createElement('div', { className: 'panel card' }, 'Loading your tasks…') : (
+      activeView === 'dashboard' ? React.createElement(DashboardView, {
+        tasks,
+        dueToday,
+        overdue,
+        completed: completedTasks,
+        pending: pendingTasks
+      }) :
+      activeView === 'tasks' ? React.createElement(TasksView, {
+        tasks: filteredTasks,
+        categories,
+        form,
+        updateForm,
+        addTask,
+        toggleTask,
+        removeTask,
+        editingId,
+        editTitle,
+        setEditingId,
+        setEditTitle,
+        saveEdit,
+        filters,
+        setFilters
+      }) :
+      activeView === 'calendar' ? React.createElement(CalendarView, { calendarMap, tasks }) :
+      React.createElement(CategoriesView, { categories, categoryForm, setCategoryForm, addCategory })
     )
   );
 
-  return React.createElement('div', { id: 'app-shell', style: { display: 'flex', height: '100%' } },
-    React.createElement('div', { id: 'sidebar' },
-      React.createElement('h2', null, 'Taskmark'),
-      React.createElement('hr', { style: { border: 0, borderTop: '1px solid var(--border-color)', width: '100%' } }),
-      navButton('Dashboard', 'dashboard'),
-      navButton('Tasks', 'tasks'),
-      navButton('Calendar', 'calendar'),
-      React.createElement('button', { style: { marginTop: 'auto' }, className: 'nav-btn', onClick: toggleTheme }, 'Toggle Theme')
+  return React.createElement('div', { className: 'app-shell' }, sidebar, content);
+}
+
+function DashboardView({ tasks, dueToday, overdue, completed, pending }) {
+  const completion = tasks.length ? Math.round((completed.length / tasks.length) * 100) : 0;
+  return React.createElement('div', { className: 'view-stack' },
+    React.createElement('div', { className: 'hero' },
+      React.createElement('div', null,
+        React.createElement('h1', { className: 'page-title' }, 'Dashboard'),
+        React.createElement('p', { className: 'page-subtitle' }, 'Your productivity at a glance.')
+      )
     ),
-    React.createElement('div', { id: 'main-content' },
-      activeTab === 'dashboard' && React.createElement('div', { className: 'view-section' },
-        React.createElement('h1', null, 'Dashboard'),
-        React.createElement('div', { id: 'quick-stats', style: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px', marginBottom: '30px' } },
-          React.createElement('div', { style: { background: 'var(--bg-sidebar)', padding: '20px', borderRadius: '8px' } },
-            React.createElement('h3', null, 'Due Today'),
-            React.createElement('p', { style: { fontSize: '24px', fontWeight: 'bold' } }, stats.today)
-          ),
-          React.createElement('div', { style: { background: 'var(--bg-sidebar)', padding: '20px', borderRadius: '8px' } },
-            React.createElement('h3', null, 'Overdue'),
-            React.createElement('p', { style: { fontSize: '24px', fontWeight: 'bold', color: '#ef4444' } }, stats.overdue)
-          ),
-          React.createElement('div', { style: { background: 'var(--bg-sidebar)', padding: '20px', borderRadius: '8px' } },
-            React.createElement('h3', null, 'Completed'),
-            React.createElement('p', { style: { fontSize: '24px', fontWeight: 'bold', color: '#10b981' } }, stats.done)
-          )
+    React.createElement('div', { className: 'stats-grid' },
+      createMetric('Due Today', dueToday.length, 'warning', `${dueToday.length} tasks due now`),
+      createMetric('Overdue', overdue.length, 'danger', overdue.length ? 'Needs attention' : 'All caught up'),
+      createMetric('Completed', completed.length, 'success', `${completion}% completion rate`)
+    ),
+    React.createElement('div', { className: 'panel-grid' },
+      React.createElement('div', { className: 'panel card' },
+        React.createElement('h3', { className: 'panel-title' }, 'Quick Overview'),
+        React.createElement('div', { className: 'info-list' },
+          React.createElement('div', { className: 'info-row' }, React.createElement('span', null, 'Active tasks'), React.createElement('strong', null, pending.length)),
+          React.createElement('div', { className: 'info-row' }, React.createElement('span', null, 'Completed tasks'), React.createElement('strong', null, completed.length)),
+          React.createElement('div', { className: 'info-row' }, React.createElement('span', null, 'Total tasks'), React.createElement('strong', null, tasks.length))
         )
       ),
-      activeTab === 'tasks' && React.createElement('div', { className: 'view-section' },
-        React.createElement('h1', null, 'Manage Tasks'),
-        React.createElement('div', { style: { background: 'var(--bg-sidebar)', padding: '20px', borderRadius: '8px', marginBottom: '20px' } },
-          React.createElement('input', {
-            type: 'text',
-            value: form.title,
-            placeholder: 'What needs to be done?',
-            onChange: e => updateForm('title', e.target.value),
-            style: { width: '100%', padding: '10px', marginBottom: '10px' }
-          }),
-          React.createElement('select', {
-            value: form.priority,
-            onChange: e => updateForm('priority', e.target.value),
-            style: { width: '100%', padding: '10px', marginBottom: '10px' }
-          },
-            React.createElement('option', null, 'Low'),
-            React.createElement('option', null, 'Medium'),
-            React.createElement('option', null, 'High'),
-            React.createElement('option', null, 'Critical')
-          ),
-          React.createElement('input', {
-            type: 'date',
-            value: form.date,
-            onChange: e => updateForm('date', e.target.value),
-            style: { width: '100%', padding: '10px', marginBottom: '10px' }
-          }),
-          React.createElement('input', {
-            type: 'time',
-            value: form.time,
-            onChange: e => updateForm('time', e.target.value),
-            style: { width: '100%', padding: '10px', marginBottom: '10px' }
-          }),
-          React.createElement('button', {
-            onClick: addNewTask,
-            style: { padding: '10px 20px', background: 'var(--accent-color)', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }
-          }, 'Add Task')
-        ),
-        React.createElement('div', { id: 'task-container' }, taskRows)
-      ),
-      activeTab === 'calendar' && React.createElement('div', { className: 'view-section' },
-        React.createElement('h1', null, 'Calendar'),
-        React.createElement('p', null, 'Calendar visualization schedules go here.')
+      React.createElement('div', { className: 'panel card' },
+        React.createElement('h3', { className: 'panel-title' }, 'Recent activity'),
+        completed.length ? React.createElement('ul', { className: 'activity-list' }, completed.slice(0, 5).map(task =>
+          React.createElement('li', { key: task.id, className: 'activity-item' },
+            React.createElement('span', null, task.title),
+            React.createElement('small', null, task.dueDate || 'No date')
+          )
+        )) : React.createElement('p', { className: 'empty-state' }, 'No completed tasks yet.')
       )
+    )
+  );
+}
+
+function createMetric(label, value, tone, hint) {
+  const toneClass = tone === 'danger' ? 'metric-danger' : tone === 'success' ? 'metric-success' : 'metric-warning';
+  return React.createElement('div', { className: `card metric ${toneClass}` },
+    React.createElement('div', { className: 'metric-label' }, label),
+    React.createElement('div', { className: 'metric-value' }, value),
+    React.createElement('div', { className: 'metric-hint' }, hint)
+  );
+}
+
+function TasksView({ tasks, categories, form, updateForm, addTask, toggleTask, removeTask, editingId, editTitle, setEditingId, setEditTitle, saveEdit, filters, setFilters }) {
+  const priorities = ['Low', 'Medium', 'High', 'Critical'];
+  const statusOptions = ['all', 'active', 'completed'];
+  const dueOptions = ['all', 'today', 'overdue', 'upcoming'];
+
+  function updateFilter(key, value) {
+    setFilters(prev => ({ ...prev, [key]: value }));
+  }
+
+  return React.createElement('div', { className: 'view-stack' },
+    React.createElement('div', { className: 'hero' },
+      React.createElement('div', null,
+        React.createElement('h1', { className: 'page-title' }, 'Tasks'),
+        React.createElement('p', { className: 'page-subtitle' }, `${tasks.length} visible task${tasks.length === 1 ? '' : 's'}`)
+      )
+    ),
+    React.createElement('form', { className: 'card form-card', onSubmit: addTask },
+      React.createElement('div', { className: 'field-row' },
+        React.createElement('input', {
+          className: 'input',
+          placeholder: 'Task title…',
+          value: form.title,
+          onChange: event => updateForm('title', event.target.value)
+        }),
+        React.createElement('input', {
+          className: 'input',
+          placeholder: 'Quick note',
+          value: form.note,
+          onChange: event => updateForm('note', event.target.value)
+        })
+      ),
+      React.createElement('div', { className: 'field-row' },
+        React.createElement('select', {
+          className: 'input',
+          value: form.priority,
+          onChange: event => updateForm('priority', event.target.value)
+        }, priorities.map(priority => React.createElement('option', { key: priority, value: priority }, priority))),
+        React.createElement('select', {
+          className: 'input',
+          value: form.category,
+          onChange: event => updateForm('category', event.target.value)
+        }, categories.map(category => React.createElement('option', { key: category.id, value: category.id }, category.name)))
+      ),
+      React.createElement('div', { className: 'field-row' },
+        React.createElement('input', {
+          className: 'input',
+          type: 'date',
+          value: form.date,
+          onChange: event => updateForm('date', event.target.value)
+        }),
+        React.createElement('input', {
+          className: 'input',
+          type: 'time',
+          value: form.time,
+          onChange: event => updateForm('time', event.target.value)
+        }),
+        React.createElement('button', { className: 'btn primary', type: 'submit' }, 'Add Task')
+      )
+    ),
+    React.createElement('div', { className: 'card toolbar' },
+      React.createElement('input', {
+        className: 'input',
+        placeholder: 'Search tasks…',
+        value: filters.search,
+        onChange: event => updateFilter('search', event.target.value)
+      }),
+      React.createElement('select', { className: 'input', value: filters.status, onChange: event => updateFilter('status', event.target.value) },
+        React.createElement('option', { value: 'all' }, 'All statuses'),
+        React.createElement('option', { value: 'active' }, 'Active'),
+        React.createElement('option', { value: 'completed' }, 'Completed')
+      ),
+      React.createElement('select', { className: 'input', value: filters.priority, onChange: event => updateFilter('priority', event.target.value) },
+        React.createElement('option', { value: 'all' }, 'All priorities'),
+        priorities.map(priority => React.createElement('option', { key: priority, value: priority }, priority))
+      ),
+      React.createElement('select', { className: 'input', value: filters.due, onChange: event => updateFilter('due', event.target.value) },
+        React.createElement('option', { value: 'all' }, 'Any due date'),
+        dueOptions.slice(1).map(option => React.createElement('option', { key: option, value: option }, option.charAt(0).toUpperCase() + option.slice(1)))
+      )
+    ),
+    tasks.length ? React.createElement('div', { className: 'task-list' }, tasks.map(task => {
+      const category = categories.find(item => item.id === task.category);
+      return React.createElement('div', { key: task.id, className: `task-card ${task.isCompleted ? 'completed' : ''}` },
+        React.createElement('div', { className: 'task-main' },
+          editingId === task.id ? React.createElement('input', {
+            className: 'input',
+            autoFocus: true,
+            value: editTitle,
+            onChange: event => setEditTitle(event.target.value),
+            onBlur: () => saveEdit(task.id),
+            onKeyDown: event => event.key === 'Enter' && saveEdit(task.id)
+          }) : React.createElement('div', { className: 'task-title' }, task.title),
+          task.note ? React.createElement('div', { className: 'task-note' }, task.note) : null,
+          React.createElement('div', { className: 'task-meta' },
+            React.createElement('span', { className: 'pill' }, task.priority),
+            category ? React.createElement('span', { className: 'pill muted', style: { borderColor: category.color, color: category.color } }, category.name) : null,
+            React.createElement('span', { className: 'pill muted' }, task.dueDate || 'No date')
+          )
+        ),
+        React.createElement('div', { className: 'task-actions' },
+          React.createElement('button', { className: 'btn small', onClick: () => toggleTask(task.id) }, task.isCompleted ? 'Undo' : 'Complete'),
+          React.createElement('button', { className: 'btn small', onClick: () => { setEditingId(task.id); setEditTitle(task.title); } }, 'Edit'),
+          React.createElement('button', { className: 'btn small danger', onClick: () => removeTask(task.id) }, 'Delete')
+        )
+      );
+    })) : React.createElement('div', { className: 'panel card empty-state' }, 'No tasks match your filters yet.')
+  );
+}
+
+function CalendarView({ calendarMap, tasks }) {
+  const dates = Object.keys(calendarMap).sort();
+  return React.createElement('div', { className: 'view-stack' },
+    React.createElement('div', { className: 'hero' },
+      React.createElement('div', null,
+        React.createElement('h1', { className: 'page-title' }, 'Calendar'),
+        React.createElement('p', { className: 'page-subtitle' }, 'Upcoming deadlines at a glance.')
+      )
+    ),
+    React.createElement('div', { className: 'panel card' },
+      dates.length ? React.createElement('div', { className: 'calendar-list' }, dates.map(date =>
+        React.createElement('div', { key: date, className: 'calendar-item' },
+          React.createElement('div', { className: 'calendar-date' }, date),
+          React.createElement('ul', { className: 'activity-list' }, calendarMap[date].map(task => React.createElement('li', { key: task.id, className: 'activity-item' }, task.title)))
+        )
+      )) : React.createElement('p', { className: 'empty-state' }, 'No due dates yet.')
+    )
+  );
+}
+
+function CategoriesView({ categories, categoryForm, setCategoryForm, addCategory }) {
+  return React.createElement('div', { className: 'view-stack' },
+    React.createElement('div', { className: 'hero' },
+      React.createElement('div', null,
+        React.createElement('h1', { className: 'page-title' }, 'Categories'),
+        React.createElement('p', { className: 'page-subtitle' }, 'Keep work organized by area.')
+      )
+    ),
+    React.createElement('form', { className: 'card form-card', onSubmit: addCategory },
+      React.createElement('div', { className: 'field-row' },
+        React.createElement('input', {
+          className: 'input',
+          placeholder: 'Category name',
+          value: categoryForm.name,
+          onChange: event => setCategoryForm(prev => ({ ...prev, name: event.target.value }))
+        }),
+        React.createElement('input', {
+          className: 'input',
+          type: 'color',
+          value: categoryForm.color,
+          onChange: event => setCategoryForm(prev => ({ ...prev, color: event.target.value }))
+        }),
+        React.createElement('button', { className: 'btn primary', type: 'submit' }, 'Add Category')
+      )
+    ),
+    React.createElement('div', { className: 'panel card' },
+      categories.length ? React.createElement('div', { className: 'category-list' }, categories.map(category =>
+        React.createElement('div', { key: category.id, className: 'category-item' },
+          React.createElement('span', { className: 'category-dot', style: { backgroundColor: category.color } }),
+          React.createElement('span', null, category.name)
+        )
+      )) : React.createElement('p', { className: 'empty-state' }, 'No categories yet.')
     )
   );
 }
